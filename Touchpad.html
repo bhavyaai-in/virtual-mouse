@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Gesture Mouse | Virtual Touchpad</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;700&display=swap');
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c26;
+    --border: rgba(255,255,255,0.07);
+    --accent: #7c6dfa;
+    --accent2: #fa6d8e;
+    --text: #e8e8f0;
+    --muted: rgba(232,232,240,0.4);
+    --green: #4ade80;
+    --red: #f87171;
+    --scroll-zone-hint: rgba(124, 109, 250, 0.15);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .header {
+    padding: 14px 20px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--red);
+    transition: background 0.4s;
+    box-shadow: 0 0 6px var(--red);
+  }
+  .dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+  .sens-bar {
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sens-bar span { font-size: 10px; color: var(--muted); white-space: nowrap; }
+
+  .sens-bar input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 3px;
+    background: var(--surface2);
+    border-radius: 2px;
+    outline: none;
+  }
+  .sens-bar input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+    z-index: 30;
+    position: relative;
+  }
+
+  .click-btn {
+    background: var(--surface);
+    color: var(--muted);
+    border: none;
+    padding: 10px 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    letter-spacing: 0.05em;
+  }
+  .click-btn:active { background: var(--surface2); color: var(--accent); }
+  .click-btn.active { background: var(--accent); color: white; }
+
+  .touchpad-container {
+    flex: 1;
+    position: relative;
+    background: var(--surface);
+    overflow: hidden;
+    min-height: 65dvh;
+  }
+
+  .touchpad {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    cursor: crosshair;
+    z-index: 10;
+  }
+
+  /* visual scroll zones (left 20%, right 20%) */
+  .scroll-zone-left,
+  .scroll-zone-right {
+    position: absolute;
+    top: 0;
+    width: 20%;
+    height: 100%;
+    pointer-events: none;
+    background: linear-gradient(90deg, var(--scroll-zone-hint), transparent);
+    border-right: 1px solid rgba(124,109,250,0.2);
+    z-index: 5;
+    transition: opacity 0.3s;
+  }
+  .scroll-zone-left {
+    left: 0;
+    border-right: 1px solid rgba(124,109,250,0.3);
+  }
+  .scroll-zone-right {
+    right: 0;
+    background: linear-gradient(-90deg, var(--scroll-zone-hint), transparent);
+    border-left: 1px solid rgba(124,109,250,0.3);
+  }
+  .zone-label {
+    position: absolute;
+    bottom: 12px;
+    font-size: 9px;
+    color: var(--muted);
+    background: rgba(0,0,0,0.5);
+    padding: 2px 6px;
+    border-radius: 12px;
+    left: 10px;
+    pointer-events: none;
+    font-family: monospace;
+  }
+  .zone-label.right {
+    left: auto;
+    right: 10px;
+  }
+
+  .touchpad-hint {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.6;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    background: rgba(0,0,0,0.4);
+    padding: 6px 12px;
+    border-radius: 20px;
+    backdrop-filter: blur(2px);
+    white-space: nowrap;
+    z-index: 20;
+  }
+  .touchpad-hint.hidden { opacity: 0; display: none; }
+
+  /* Gyro direction ball */
+  .gyro-ball {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, var(--green), rgba(74,222,128,0.3));
+    box-shadow: 0 0 20px rgba(74,222,128,0.5), 0 0 60px rgba(74,222,128,0.2);
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 30;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    will-change: transform;
+  }
+  .gyro-ball.show { opacity: 1; }
+
+  /* Switcher mode zone overlays (5 zones) */
+  .switcher-overlay {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    pointer-events: none;
+    z-index: 8;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .switcher-overlay.show { opacity: 1; }
+  .switcher-far-left {
+    left: 0;
+    width: 20%;
+    background: linear-gradient(90deg, rgba(124,109,250,0.25), transparent);
+    border-right: 1px solid rgba(124,109,250,0.3);
+  }
+  .switcher-near-left {
+    left: 20%;
+    width: 15%;
+    background: rgba(124,109,250,0.08);
+    border-right: 1px dashed rgba(124,109,250,0.15);
+  }
+  .switcher-center {
+    left: 35%;
+    width: 30%;
+    background: rgba(124,109,250,0.06);
+  }
+  .switcher-near-right {
+    right: 35%;
+    width: 15%;
+    background: rgba(124,109,250,0.08);
+    border-left: 1px dashed rgba(124,109,250,0.15);
+  }
+  .switcher-far-right {
+    right: 0;
+    width: 20%;
+    background: linear-gradient(-90deg, rgba(124,109,250,0.25), transparent);
+    border-left: 1px solid rgba(124,109,250,0.3);
+  }
+  .switcher-label {
+    position: absolute;
+    bottom: 16px;
+    font-size: 9px;
+    color: var(--muted);
+    background: rgba(0,0,0,0.5);
+    padding: 2px 6px;
+    border-radius: 12px;
+    pointer-events: none;
+    font-family: monospace;
+    opacity: 0;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+  }
+  .switcher-label.show { opacity: 1; }
+  .switcher-label.far-left { left: 4px; }
+  .switcher-label.near-left { left: 21%; }
+  .switcher-label.center { left: 50%; transform: translateX(-50%); }
+  .switcher-label.near-right { right: 21%; }
+  .switcher-label.far-right { right: 4px; }
+
+  .ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(124, 109, 250, 0.4);
+    transform: scale(0);
+    animation: ripple-anim 0.4s ease-out forwards;
+    pointer-events: none;
+    z-index: 25;
+  }
+
+  @keyframes ripple-anim {
+    to { transform: scale(5); opacity: 0; }
+  }
+
+  .keyboard-area {
+    padding: 10px 16px 12px;
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+
+  .keyboard-area input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    padding: 10px 14px;
+    outline: none;
+    touch-action: manipulation;
+  }
+  .keyboard-area input:focus { border-color: var(--accent); }
+
+  .send-btn {
+    background: var(--surface2);
+    color: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .send-btn:active { opacity: 0.7; }
+
+  .mic-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 16px;
+    padding: 10px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    line-height: 1;
+  }
+  .mic-btn:active { opacity: 0.7; }
+  .mic-btn.active { border-color: var(--red); color: var(--red); background: rgba(248,113,113,0.1); }
+
+  .special-keys {
+    display: flex;
+    gap: 6px;
+    padding: 0 16px 12px;
+    overflow-x: auto;
+    flex-shrink: 0;
+    background: var(--surface);
+    -webkit-overflow-scrolling: touch;
+  }
+  .special-keys::-webkit-scrollbar { display: none; }
+  .sk {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 6px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.1s;
+  }
+  .sk:active { border-color: var(--accent); color: var(--accent); transform: scale(0.96); }
+
+  .latency {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+  .latency.fast { color: var(--green); }
+  .latency.slow { color: var(--red); }
+
+  .reload-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 13px;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    line-height: 1;
+    padding: 0;
+  }
+  .reload-btn:active { border-color: var(--accent); color: var(--accent); transform: rotate(90deg); }
+
+  .gyro-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 13px;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    line-height: 1;
+    padding: 0;
+    font-family: 'DM Mono', monospace;
+  }
+  .gyro-btn:active { border-color: var(--accent); color: var(--accent); }
+  .gyro-btn.active { border-color: var(--green); color: var(--green); box-shadow: 0 0 6px rgba(74,222,128,0.3); }
+
+  /* Fullscreen overlay drawer */
+  .drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 98;
+    background: rgba(0,0,0,0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+
+  .drawer {
+    position: fixed;
+    bottom: 7dvh;
+    left: 0;
+    right: 0;
+    height: 100dvh;
+    z-index: 100;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    touch-action: none;
+    will-change: transform;
+    transition: transform 0.25s ease;
+  }
+
+  .drawer-handle {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 8px 0 4px;
+    cursor: grab;
+    touch-action: none;
+    flex-shrink: 0;
+    background: var(--surface);
+    position: relative;
+    z-index: 2;
+  }
+
+  .drawer-bar {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--muted);
+    opacity: 0.35;
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .drawer.dragging { transition: none !important; }
+
+  .drawer-spacer {
+    flex-shrink: 0;
+  }
+
+  .click-hold-active {
+    background: var(--accent) !important;
+    color: white !important;
+    transition: 0.05s;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">✱ GESTURE MOUSE</div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="latency" id="latency">-- ms</span>
+    <div class="status">
+      <div class="dot" id="dot"></div>
+      <span id="status-text">disconnected</span>
+    </div>
+    <button class="reload-btn" onclick="location.reload()" title="reload">↻</button>
+    <button class="gyro-btn" id="gyroBtn" onclick="toggleGyro()" title="gyro cursor">⊚</button>
+  </div>
+</div>
+
+<div class="sens-bar">
+  <span>⚡ speed</span>
+  <input type="range" id="sensitivity" min="1" max="5" step="0.5" value="2.5">
+  <span id="sens-val">2.5x</span>
+</div>
+
+<div class="touchpad-container">
+  <div class="scroll-zone-left"><div class="zone-label">⇅ scroll</div></div>
+  <div class="scroll-zone-right"><div class="zone-label right">⇅ scroll</div></div>
+  <div class="touchpad" id="touchpad">
+    <div class="touchpad-hint" id="hint">
+      ⚡ double tap = left click<br>
+      ⚡ triple tap = right click<br>
+      ⇅ edges = scroll<br>
+      ✊ hold buttons = tab/app switch
+    </div>
+  </div>
+  <div class="switcher-overlay switcher-far-left" id="szFL"></div>
+  <div class="switcher-overlay switcher-near-left" id="szNL"></div>
+  <div class="switcher-overlay switcher-center" id="szC"></div>
+  <div class="switcher-overlay switcher-near-right" id="szNR"></div>
+  <div class="switcher-overlay switcher-far-right" id="szFR"></div>
+  <span class="switcher-label far-left" id="slFL"></span>
+  <span class="switcher-label near-left" id="slNL"></span>
+  <span class="switcher-label center" id="slC"></span>
+  <span class="switcher-label near-right" id="slNR"></span>
+  <span class="switcher-label far-right" id="slFR"></span>
+  <div class="gyro-ball" id="gyroBall"></div>
+</div>
+
+<div class="btn-row">
+  <button class="click-btn" id="leftBtn"
+    ontouchstart="btnTouchStart('left', event)"
+    ontouchmove="btnTouchMove(event)"
+    ontouchend="btnTouchEnd(event)">◉ tab switch</button>
+  <button class="click-btn" id="rightBtn"
+    ontouchstart="btnTouchStart('right', event)"
+    ontouchmove="btnTouchMove(event)"
+    ontouchend="btnTouchEnd(event)">◉ app switch</button>
+</div>
+
+<div class="keyboard-area">
+  <input type="text" id="key-input" placeholder="type here..." autocorrect="off" spellcheck="false">
+  <button class="mic-btn" id="micBtn" onclick="toggleMic()" title="voice input">🎤</button>
+  <button class="send-btn" onclick="sendText()">send ↵</button>
+</div>
+
+<div class="drawer-spacer" id="drawerSpacer"></div>
+
+<div class="drawer-backdrop" id="drawerBackdrop"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-handle" id="drawerHandle">
+    <div class="drawer-bar"></div>
+  </div>
+  <div class="drawer-body" id="drawerBody">
+    <div class="special-keys">
+      <button class="sk" onclick="sendSpecial('enter')">↵ enter</button>
+      <button class="sk" onclick="sendSpecial('backspace')">⌫ back</button>
+      <button class="sk" onclick="sendSpecial('tab')">⇥ tab</button>
+      <button class="sk" onclick="sendSpecial('escape')">esc</button>
+      <button class="sk" onclick="sendSpecial('up')">↑</button>
+      <button class="sk" onclick="sendSpecial('down')">↓</button>
+      <button class="sk" onclick="sendSpecial('left')">←</button>
+      <button class="sk" onclick="sendSpecial('right')">→</button>
+      <button class="sk" onclick="sendSpecial('space')">space</button>
+      <button class="sk" onclick="sendDouble()">🔁 dbl click</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- WEBSOCKET ----------
+let ws = null;
+let connected = false;
+let pingStart = 0;
+let sensitivity = 2.5;
+
+const touchpad = document.getElementById('touchpad');
+const hint = document.getElementById('hint');
+const dot = document.getElementById('dot');
+const statusText = document.getElementById('status-text');
+const latencyEl = document.getElementById('latency');
+const sensSlider = document.getElementById('sensitivity');
+
+sensSlider.addEventListener('input', () => {
+  sensitivity = parseFloat(sensSlider.value);
+  document.getElementById('sens-val').textContent = sensitivity.toFixed(1) + 'x';
+});
+
+function getAutoWsUrl() {
+  let host = window.location.host.replace(/^www\./, '');
+  let proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return proto + '://' + host;
+}
+
+function setStatus(conn, text) {
+  connected = conn;
+  dot.className = 'dot' + (conn ? ' on' : '');
+  statusText.textContent = text;
+}
+
+function connect() {
+  const url = getAutoWsUrl();
+  setStatus(false, 'connecting...');
+  ws = new WebSocket(url);
+  ws.onopen = () => { ws.send(JSON.stringify({ type: 'phone_client' })); };
+  ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === 'connected') {
+      setStatus(true, 'connected');
+      startPing();
+    } else if (data.type === 'mac_status') {
+      statusText.textContent = data.connected ? 'mac ready ✓' : 'mac offline';
+    } else if (data.type === 'pong') {
+      const lat = Date.now() - pingStart;
+      latencyEl.textContent = lat + ' ms';
+      latencyEl.className = 'latency' + (lat < 50 ? ' fast' : lat > 150 ? ' slow' : '');
+    }
+  };
+  ws.onerror = () => {
+    setStatus(false, 'error');
+    ws = null;
+    setTimeout(connect, 3000);
+  };
+  ws.onclose = () => {
+    ws = null;
+    setStatus(false, 'disconnected');
+    setTimeout(connect, 3000);
+  };
+}
+
+setTimeout(connect, 300);
+
+// ---------- GYRO CURSOR ----------
+let gyroOn = false;
+let gyroHandler = null;
+let lastMotionTime = 0;
+let ballTX = 0, ballTY = 0;
+let gx = 0, gy = 0, gz = 0;
+const gyroBall = document.getElementById('gyroBall');
+let ballAnimId = null;
+
+function updateBall() {
+  const maxD = 60;
+  const sx = Math.max(-1, Math.min(1, ballTX / maxD));
+  const sy = Math.max(-1, Math.min(1, ballTY / maxD));
+  gyroBall.style.transform = `translate(calc(-50% + ${sx * maxD}px), calc(-50% + ${sy * maxD}px))`;
+  ballAnimId = requestAnimationFrame(updateBall);
+}
+
+function toggleGyro() {
+  if (gyroOn) stopGyro();
+  else startGyro();
+}
+
+function startGyro() {
+  ballTX = 0; ballTY = 0;
+  gx = 0; gy = 0; gz = 0;
+  gyroBall.classList.add('show');
+  if (ballAnimId) cancelAnimationFrame(ballAnimId);
+  ballAnimId = requestAnimationFrame(updateBall);
+
+  gyroHandler = (e) => {
+    const ax = e.accelerationIncludingGravity.x;
+    const ay = e.accelerationIncludingGravity.y;
+    const az = e.accelerationIncludingGravity.z;
+
+    // High-pass filter to remove gravity (works same on iOS & Android)
+    const k = 0.92;
+    gx = gx * k + ax * (1 - k);
+    gy = gy * k + ay * (1 - k);
+    gz = gz * k + az * (1 - k);
+    const ux = ax - gx;  // user acceleration X
+    const uy = ay - gy;  // user acceleration Y
+    const uz = az - gz;  // user acceleration Z
+
+    // Ball visual: smooth follow with the filtered acceleration
+    const smooth = 0.3;
+    ballTX += (ux * 60 - ballTX) * smooth;
+    ballTY += (-uy * 60 - ballTY) * smooth;
+
+    // Throttle sends
+    const now = Date.now();
+    if (now - lastMotionTime < 30) return;
+    lastMotionTime = now;
+
+    const sx = ux * 12;
+    const sy = -uy * 12;
+    if (Math.abs(sx) >= 2 || Math.abs(sy) >= 2) {
+      send({ event: 'motion', x: Math.round(sx), y: Math.round(sy) });
+    }
+
+    if (uz >= 3) send({ event: 'click', button: 'left' });
+    else if (uz <= -3) send({ event: 'click', button: 'right' });
+  };
+
+  const attach = () => {
+    window.addEventListener('devicemotion', gyroHandler);
+    gyroOn = true;
+    document.getElementById('gyroBtn').classList.add('active');
+  };
+
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+    DeviceMotionEvent.requestPermission().then(state => {
+      if (state === 'granted') attach();
+      else alert('Gyro permission required');
+    }).catch(() => attach());
+  } else {
+    attach();
+  }
+}
+
+function stopGyro() {
+  if (gyroHandler) {
+    window.removeEventListener('devicemotion', gyroHandler);
+    gyroHandler = null;
+  }
+  gyroOn = false;
+  gyroBall.classList.remove('show');
+  if (ballAnimId) { cancelAnimationFrame(ballAnimId); ballAnimId = null; }
+  document.getElementById('gyroBtn').classList.remove('active');
+}
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function startPing() {
+  setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      pingStart = Date.now();
+      send({ event: 'ping', type: 'ping' });
+    }
+  }, 2000);
+}
+
+// ---------- FULLSCREEN DRAWER ----------
+let drawerOpen = false;
+let drawerStartY = 0;
+let drawerOffset = 0;
+let drawerVelo = 0;
+let drawerLastY = 0;
+let drawerLastT = 0;
+const drawer = document.getElementById('drawer');
+const drawerBody = document.getElementById('drawerBody');
+const drawerHandle = document.getElementById('drawerHandle');
+const drawerBackdrop = document.getElementById('drawerBackdrop');
+const drawerSpacer = document.getElementById('drawerSpacer');
+let drawerClosedY = 0;
+let drawerMaxOpen = 0;
+
+function initDrawer() {
+  drawerClosedY = window.innerHeight - drawerHandle.offsetHeight;
+  drawerMaxOpen = window.innerHeight * 0.1;
+  if (drawerClosedY < 60) drawerClosedY = 60;
+  drawerSpacer.style.height = drawerClosedY + 'px';
+  drawer.style.transform = `translateY(${drawerClosedY}px)`;
+  drawer.classList.remove('dragging');
+}
+
+function setDrawer(open, animate) {
+  drawer.classList.toggle('dragging', !animate);
+  const targetY = open ? drawerMaxOpen : drawerClosedY;
+  drawer.style.transform = `translateY(${targetY}px)`;
+  drawerBackdrop.style.opacity = open ? '1' : '0';
+  drawerBackdrop.style.pointerEvents = open ? 'auto' : 'none';
+  drawerOpen = open;
+  if (animate) {
+    clearTimeout(drawer._anim);
+    drawer._anim = setTimeout(() => drawer.classList.remove('dragging'), 300);
+  }
+}
+
+function stickDrawer(y) {
+  y = Math.max(drawerMaxOpen, Math.min(drawerClosedY, y));
+  drawer.classList.remove('dragging');
+  drawer.style.transform = `translateY(${y}px)`;
+  const range = drawerClosedY - drawerMaxOpen;
+  const progress = range > 0 ? 1 - ((y - drawerMaxOpen) / range) : 0;
+  drawerBackdrop.style.opacity = Math.min(1, progress * 1.2).toString();
+  drawerBackdrop.style.pointerEvents = y < drawerClosedY ? 'auto' : 'none';
+  drawerOpen = y < drawerClosedY;
+}
+
+drawer.addEventListener('touchstart', (e) => {
+  drawerStartY = e.touches[0].clientY;
+  drawerLastY = drawerStartY;
+  drawerLastT = e.timeStamp;
+  drawerVelo = 0;
+  drawer.classList.add('dragging');
+  const m = drawer.style.transform.match(/translateY\(([-\d.]+)px\)/);
+  drawerOffset = m ? parseFloat(m[1]) : (drawerOpen ? drawerMaxOpen : drawerClosedY);
+}, { passive: true });
+
+drawer.addEventListener('touchmove', (e) => {
+  if (!drawer.classList.contains('dragging')) return;
+  const now = e.timeStamp;
+  const dy = e.touches[0].clientY - drawerStartY;
+  let y = drawerOffset + dy;
+  y = Math.max(drawerMaxOpen - 20, Math.min(drawerClosedY, y));
+  drawer.style.transform = `translateY(${y}px)`;
+  const range = drawerClosedY - drawerMaxOpen;
+  let progress = range > 0 ? 1 - ((y - drawerMaxOpen) / range) : 0;
+  drawerBackdrop.style.opacity = Math.min(1, progress * 1.2).toString();
+
+  drawerVelo = (e.touches[0].clientY - drawerLastY) / Math.max(1, now - drawerLastT) * 1000;
+  drawerLastY = e.touches[0].clientY;
+  drawerLastT = now;
+}, { passive: true });
+
+drawer.addEventListener('touchend', (e) => {
+  if (!drawer.classList.contains('dragging')) return;
+  drawer.classList.remove('dragging');
+  const m = drawer.style.transform.match(/translateY\(([-\d.]+)px\)/);
+  const curY = m ? parseFloat(m[1]) : drawerClosedY;
+
+  if (drawerVelo < -800) {
+    setDrawer(true, true);
+  } else if (drawerVelo > 800) {
+    setDrawer(false, true);
+  } else {
+    stickDrawer(curY);
+  }
+}, { passive: true });
+
+initDrawer();
+window.addEventListener('resize', initDrawer);
+
+// ---------- GESTURE ENGINE ----------
+let lastX = 0, lastY = 0;
+let activePointerId = null;
+let currentGestureState = 'idle'; // idle, moving, scrolling, dragHold
+let scrollModeActive = false;      // if finger in left/right 20% zone
+let holdTimer = null;
+let holdActive = false;
+let holdButtonType = null;
+
+// Multi-tap detection (double/triple)
+let tapTimer = null;
+let tapCount = 0;
+let lastTapTime = 0;
+const DOUBLE_TAP_DELAY = 300;
+const HOLD_DURATION = 400;
+const MOVE_THRESHOLD = 1; // ms for click & hold
+
+// Track ongoing touch for hold simulation (from touchpad)
+let activeTouchHoldTimer = null;
+let activeHoldTouchIdentifier = null;
+let pendingHoldClickType = null;
+
+// Switcher mode state
+let switcherMode = false;
+let switcherKey = 'tab';
+let swLastZone = 'center';
+let swRepeatTimer = null;
+
+// Switcher zone overlay refs
+const szFL = document.getElementById('szFL');
+const szNL = document.getElementById('szNL');
+const szC = document.getElementById('szC');
+const szNR = document.getElementById('szNR');
+const szFR = document.getElementById('szFR');
+const slFL = document.getElementById('slFL');
+const slNL = document.getElementById('slNL');
+const slC = document.getElementById('slC');
+const slNR = document.getElementById('slNR');
+const slFR = document.getElementById('slFR');
+
+function getSwitcherRelX(clientX) {
+  const rect = touchpad.getBoundingClientRect();
+  return (clientX - rect.left) / rect.width;
+}
+
+function getSwitcherZone(clientX) {
+  const relX = getSwitcherRelX(clientX);
+  if (relX < 0.20) return 'farLeft';
+  if (relX < 0.35) return 'nearLeft';
+  if (relX > 0.80) return 'farRight';
+  if (relX > 0.65) return 'nearRight';
+  return 'center';
+}
+
+function swSend() {
+  send({ event: switcherKey === 'tab' ? 'cmd_hold_tab' : 'cmd_hold_tilde' });
+}
+
+function swSendShift() {
+  send({ event: switcherKey === 'tab' ? 'cmd_hold_shift_tab' : 'cmd_hold_shift_tilde' });
+}
+
+function clearSwRepeat() {
+  if (swRepeatTimer) {
+    clearInterval(swRepeatTimer);
+    swRepeatTimer = null;
+  }
+}
+
+function showSwitcherUI(show) {
+  const cls = show ? 'show' : '';
+  szFL.className = 'switcher-overlay switcher-far-left ' + cls;
+  szNL.className = 'switcher-overlay switcher-near-left ' + cls;
+  szC.className = 'switcher-overlay switcher-center ' + cls;
+  szNR.className = 'switcher-overlay switcher-near-right ' + cls;
+  szFR.className = 'switcher-overlay switcher-far-right ' + cls;
+  slFL.className = 'switcher-label far-left ' + cls;
+  slNL.className = 'switcher-label near-left ' + cls;
+  slC.className = 'switcher-label center ' + cls;
+  slNR.className = 'switcher-label near-right ' + cls;
+  slFR.className = 'switcher-label far-right ' + cls;
+  if (show) {
+    slFL.textContent = '⏪⏪ auto';
+    slNL.textContent = '⏪';
+    slC.textContent = '↕';
+    slNR.textContent = '⏩';
+    slFR.textContent = 'auto ⏩⏩';
+  }
+}
+
+function exitSwitcher() {
+  if (switcherMode) {
+    clearSwRepeat();
+    send({ event: 'cmd_hold_end' });
+    switcherMode = false;
+    showSwitcherUI(false);
+  }
+}
+
+// get relative x position in touchpad (0..1)
+function getRelativeX(clientX) {
+  const rect = touchpad.getBoundingClientRect();
+  let x = (clientX - rect.left) / rect.width;
+  return Math.min(1, Math.max(0, x));
+}
+
+// detect if touch falls into left/right 20% zone (scroll zones)
+function isScrollZone(clientX) {
+  const relX = getRelativeX(clientX);
+  return (relX <= 0.2) || (relX >= 0.8);
+}
+
+function resetTapCounter() {
+  if (tapTimer) clearTimeout(tapTimer);
+  tapTimer = null;
+  tapCount = 0;
+}
+
+function handleTapGesture(buttonType) {
+  // For backward compatibility we use left/right mapping. But double=left, triple=right
+}
+
+// Execute click command (with optional hold mode)
+function executeClick(button, isHold = false) {
+  if (isHold) {
+    send({ event: 'click_hold', button: button, state: 'start' });
+  } else {
+    send({ event: 'click', button: button });
+  }
+}
+
+function executeHoldEnd(button) {
+  send({ event: 'click_hold', button: button, state: 'end' });
+}
+
+// Cancel any pending hold from touchpad
+function cancelTouchHold() {
+  if (activeTouchHoldTimer) {
+    clearTimeout(activeTouchHoldTimer);
+    activeTouchHoldTimer = null;
+  }
+  if (holdActive && holdButtonType) {
+    executeHoldEnd(holdButtonType);
+    holdActive = false;
+    holdButtonType = null;
+  }
+  activeHoldTouchIdentifier = null;
+  pendingHoldClickType = null;
+}
+
+// Touchpad touchstart logic (with zone detection + tap + hold)
+touchpad.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const clientX = touch.clientX;
+  const clientY = touch.clientY;
+  lastX = clientX;
+  lastY = clientY;
+
+  exitSwitcher();
+  scrollModeActive = isScrollZone(clientX);
+  cancelTouchHold();
+  
+  // Multi-tap detection (double = left click, triple = right click)
+  const now = Date.now();
+  if (now - lastTapTime < DOUBLE_TAP_DELAY) {
+    tapCount++;
+  } else {
+    tapCount = 1;
+  }
+  lastTapTime = now;
+  
+  if (tapTimer) clearTimeout(tapTimer);
+  tapTimer = setTimeout(() => {
+    if (tapCount === 2 && activePointerId === null) {
+      send({ event: 'click', button: 'left' });
+      addRipple(clientX, clientY);
+    } else if (tapCount === 3 && activePointerId === null) {
+      send({ event: 'click', button: 'right' });
+      addRipple(clientX, clientY);
+    }
+    resetTapCounter();
+  }, DOUBLE_TAP_DELAY);
+  
+  if (tapCount >= 2 && !scrollModeActive) {
+    const btnType = tapCount >= 3 ? 'right' : 'left';
+    activeTouchHoldTimer = setTimeout(() => {
+      holdActive = true;
+      holdButtonType = btnType;
+      executeClick(btnType, true);
+      addRipple(clientX, clientY);
+      activeTouchHoldTimer = null;
+    }, HOLD_DURATION);
+  }
+  
+  hint.classList.add('hidden');
+  currentGestureState = scrollModeActive ? 'scrolling' : 'moving';
+  activePointerId = touch.identifier;
+}, { passive: false });
+
+touchpad.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (!activePointerId) return;
+  const touch = Array.from(e.touches).find(t => t.identifier === activePointerId);
+  if (!touch) return;
+  
+  const clientX = touch.clientX;
+  const clientY = touch.clientY;
+  const rawDx = clientX - lastX;
+  const rawDy = clientY - lastY;
+  const dx = rawDx * sensitivity;
+  const dy = rawDy * sensitivity;
+  
+  // ---- SWITCHER MODE (triggered by button hold) ----
+  if (switcherMode) {
+    const zone = getSwitcherZone(clientX);
+    if (zone !== swLastZone) {
+      clearSwRepeat();
+      if (zone === 'nearRight') {
+        swSend();
+      } else if (zone === 'nearLeft') {
+        swSendShift();
+      } else if (zone === 'farRight') {
+        swSend();
+        swRepeatTimer = setInterval(swSend, 500);
+      } else if (zone === 'farLeft') {
+        swSendShift();
+        swRepeatTimer = setInterval(swSendShift, 500);
+      }
+      swLastZone = zone;
+    }
+    lastX = clientX;
+    lastY = clientY;
+    return;
+  }
+  
+  // ---- NORMAL MODE (locked from touchstart) ----
+  
+  if (holdActive && holdButtonType) {
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+      send({ event: 'drag_move', dx: Math.round(dx * 10) / 10, dy: Math.round(dy * 10) / 10 });
+    }
+    lastX = clientX;
+    lastY = clientY;
+    return;
+  }
+  
+  if (currentGestureState === 'scrolling') {
+    let scrollDelta = rawDy * 1.2 * sensitivity;
+    if (Math.abs(scrollDelta) > 2) {
+      send({ event: 'scroll', dx: 0, dy: -scrollDelta });
+    }
+  } 
+  else if (currentGestureState === 'moving') {
+    if (Math.abs(rawDx) > MOVE_THRESHOLD || Math.abs(rawDy) > MOVE_THRESHOLD) {
+      send({ event: 'move', dx: Math.round(dx * 10) / 10, dy: Math.round(dy * 10) / 10 });
+      addRipple(clientX, clientY, true);
+    }
+  }
+  
+  lastX = clientX;
+  lastY = clientY;
+}, { passive: false });
+
+touchpad.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  exitSwitcher();
+  if (activeTouchHoldTimer) {
+    clearTimeout(activeTouchHoldTimer);
+    activeTouchHoldTimer = null;
+  }
+  if (holdActive && holdButtonType) {
+    executeHoldEnd(holdButtonType);
+    holdActive = false;
+    holdButtonType = null;
+  }
+  currentGestureState = 'idle';
+  scrollModeActive = false;
+  activePointerId = null;
+}, { passive: false });
+
+touchpad.addEventListener('touchcancel', (e) => {
+  e.preventDefault();
+  exitSwitcher();
+  currentGestureState = 'idle';
+  scrollModeActive = false;
+  activePointerId = null;
+});
+
+function addRipple(clientX, clientY, isSmall = false) {
+  const rect = touchpad.getBoundingClientRect();
+  const ripple = document.createElement('div');
+  ripple.className = 'ripple';
+  const size = isSmall ? 12 : 24;
+  ripple.style.width = ripple.style.height = size + 'px';
+  ripple.style.left = (clientX - rect.left - size/2) + 'px';
+  ripple.style.top = (clientY - rect.top - size/2) + 'px';
+  touchpad.parentElement.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 400);
+}
+
+// ----- BUTTON SWITCHER -----
+function btnTouchStart(side, e) {
+  e.preventDefault();
+  exitSwitcher();
+  const leftBtn = document.getElementById('leftBtn');
+  const rightBtn = document.getElementById('rightBtn');
+  leftBtn.classList.remove('active');
+  rightBtn.classList.remove('active');
+  e.target.classList.add('active');
+
+  switcherKey = side === 'left' ? 'tilde' : 'tab';
+  switcherMode = true;
+  swLastZone = getSwitcherZone(e.touches[0].clientX);
+  send({ event: 'cmd_hold_start' });
+  setTimeout(() => {
+    send({ event: switcherKey === 'tab' ? 'cmd_hold_tab' : 'cmd_hold_tilde' });
+  }, 30);
+  showSwitcherUI(true);
+}
+
+function btnTouchMove(e) {
+  if (!switcherMode) return;
+  e.preventDefault();
+  const zone = getSwitcherZone(e.touches[0].clientX);
+  if (zone !== swLastZone) {
+    clearSwRepeat();
+    if (zone === 'nearRight') {
+      swSend();
+    } else if (zone === 'nearLeft') {
+      swSendShift();
+    } else if (zone === 'farRight') {
+      swSend();
+      swRepeatTimer = setInterval(swSend, 500);
+    } else if (zone === 'farLeft') {
+      swSendShift();
+      swRepeatTimer = setInterval(swSendShift, 500);
+    }
+    swLastZone = zone;
+  }
+}
+
+function btnTouchEnd(e) {
+  document.getElementById('leftBtn').classList.remove('active');
+  document.getElementById('rightBtn').classList.remove('active');
+  exitSwitcher();
+}
+
+// ----- VOICE INPUT -----
+let recognition = null;
+let micListening = false;
+
+function toggleMic() {
+  if (micListening) { stopMic(); return; }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { alert('Speech recognition not supported'); return; }
+
+  recognition = new SR();
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.continuous = true;
+
+  recognition.onresult = (e) => {
+    const input = document.getElementById('key-input');
+    let text = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) text += e.results[i][0].transcript;
+    }
+    if (text) input.value += text;
+  };
+
+  recognition.onend = () => {
+    if (micListening) recognition.start();
+  };
+
+  recognition.start();
+  micListening = true;
+  document.getElementById('micBtn').classList.add('active');
+}
+
+function stopMic() {
+  micListening = false;
+  if (recognition) { recognition.stop(); recognition = null; }
+  document.getElementById('micBtn').classList.remove('active');
+}
+
+// ----- SEND COMMANDS -----
+function sendDouble() {
+  send({ event: 'double_click' });
+}
+
+function sendSpecial(key) {
+  send({ event: 'special_key', key });
+}
+
+function sendText() {
+  const input = document.getElementById('key-input');
+  const text = input.value;
+  if (text) {
+    send({ event: 'keypress', key: text });
+    input.value = '';
+  }
+}
+
+// ensure Enter key on text input sends text + optional enter
+document.getElementById('key-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    sendText();
+    sendSpecial('enter');
+  }
+});
+
+// Also double-click fallback for buttons that require double click:
+window.sendDouble = sendDouble;
+window.sendSpecial = sendSpecial;
+window.sendText = sendText;
+</script>
+</body>
+</html>
